@@ -24,22 +24,56 @@
  * Time: 19:02:33
  */
 
-
-(function (root, factory)
-{
-	if (typeof define === 'function' && define.amd)
-	{
-		// AMD. Register as an anonymous module.
+(function (root, factory) {
+	if (typeof define === 'function' && define.amd) {
 		define(factory);
-	}
-	else
-	{
-		// Browser globals
+	} else {
 		root.form2js = factory();
 	}
 }(this, function ()
 {
 	"use strict";
+
+	function checkObjectIsArray(obj) {
+		var i, counter = 0;
+		for(i in obj) {
+			if(obj.hasOwnProperty(i)) {
+				if(i == counter || !isNaN(parseInt(i, 10)) || i === "") {
+					counter += 1;
+				} else {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	function convertObjectToArray(obj) {
+		var i, array = [];
+		for(i in obj) {
+			if(obj.hasOwnProperty(i)) {
+				array.push(obj[i]);
+			}
+		}
+		return array;
+	}
+
+	function deepObjectToArray(obj) {
+		var i;
+		for(i in obj) {
+			if(obj.hasOwnProperty(i)) {
+				if(Object.prototype.toString.call(obj[i]) === "[object Object]") {
+					obj[i] = deepObjectToArray(obj[i]);					
+
+					if(checkObjectIsArray(obj[i])) {
+						obj[i] = convertObjectToArray(obj[i]);
+					}
+				}
+			}
+		}
+		return obj;
+	}
 
 	/**
 	 * Returns form values represented as Javascript object
@@ -51,245 +85,82 @@
 	 * @param nodeCallback {Function} custom function to get node value
 	 * @param useIdIfEmptyName {Boolean} if true value of id attribute of field will be used if name of field is empty
 	 */
-	function form2js(rootNode, delimiter, skipEmpty, nodeCallback, useIdIfEmptyName)
-	{
+
+	function form2js(rootNode, delimiter, skipEmpty, nodeCallback, useIdIfEmptyName) {
+		var i, j, l, fl, node, nodes = [], nodeName, callbackResult, name, value, formFields, reg, result = {};
+
 		if (typeof skipEmpty == 'undefined' || skipEmpty == null) skipEmpty = true;
 		if (typeof delimiter == 'undefined' || delimiter == null) delimiter = '.';
 		if (arguments.length < 5) useIdIfEmptyName = false;
 
 		rootNode = typeof rootNode == 'string' ? document.getElementById(rootNode) : rootNode;
 
-		var formValues = [],
-			currNode,
-			i = 0;
-
-		/* If rootNode is array - combine values */
-		if (rootNode.constructor == Array || (typeof NodeList != "undefined" && rootNode.constructor == NodeList))
-		{
-			while(currNode = rootNode[i++])
-			{
-				formValues = formValues.concat(getFormValues(currNode, nodeCallback, useIdIfEmptyName));
-			}
-		}
-		else
-		{
-			formValues = getFormValues(rootNode, nodeCallback, useIdIfEmptyName);
+		if (rootNode.constructor == Array || (typeof NodeList != "undefined" && rootNode.constructor == NodeList)) {
+			while(currNode = rootNode[i++]) nodes.push[rootNode[i++]];
+		} else {
+			nodes.push(rootNode);
 		}
 
-		return processNameValues(formValues, skipEmpty, delimiter);
-	}
+		reg = new RegExp("\\[(" + delimiter + "*?)\\]", "g");
 
-	/**
-	 * Processes collection of { name: 'name', value: 'value' } objects.
-	 * @param nameValues
-	 * @param skipEmpty if true skips elements with value == '' or value == null
-	 * @param delimiter
-	 */
-	function processNameValues(nameValues, skipEmpty, delimiter)
-	{
-		var result = {},
-			arrays = {},
-			i, j, k, l,
-			value,
-			nameParts,
-			currResult,
-			arrNameFull,
-			arrName,
-			arrIdx,
-			namePart,
-			name,
-			_nameParts;
+		for(j = 0, fl = nodes.length; j < fl; j++) {
+			formFields = nodes[j].querySelectorAll('select,input,textarea');
 
-		for (i = 0; i < nameValues.length; i++)
-		{
-			value = nameValues[i].value;
+			for(i = 0, l = formFields.length; i < l; i++) {
+				node = formFields[i];
+				nodeName = getFieldName(node, useIdIfEmptyName);
+				if(nodeName) {
+					name = nodeName.replace(reg, ".$1");
+					callbackResult = nodeCallback && nodeCallback(node);
 
-			if (skipEmpty && (value === '' || value === null)) continue;
-
-			name = nameValues[i].name;
-			_nameParts = name.split(delimiter);
-			nameParts = [];
-			currResult = result;
-			arrNameFull = '';
-
-			for(j = 0; j < _nameParts.length; j++)
-			{
-				namePart = _nameParts[j].split('][');
-				if (namePart.length > 1)
-				{
-					for(k = 0; k < namePart.length; k++)
-					{
-						if (k == 0)
-						{
-							namePart[k] = namePart[k] + ']';
-						}
-						else if (k == namePart.length - 1)
-						{
-							namePart[k] = '[' + namePart[k];
-						}
-						else
-						{
-							namePart[k] = '[' + namePart[k] + ']';
-						}
-
-						arrIdx = namePart[k].match(/([a-z_]+)?\[([a-z_][a-z0-9_]+?)\]/i);
-						if (arrIdx)
-						{
-							for(l = 1; l < arrIdx.length; l++)
-							{
-								if (arrIdx[l]) nameParts.push(arrIdx[l]);
-							}
-						}
-						else{
-							nameParts.push(namePart[k]);
-						}
-					}
-				}
-				else
-					nameParts = nameParts.concat(namePart);
-			}
-
-			for (j = 0; j < nameParts.length; j++)
-			{
-				namePart = nameParts[j];
-
-				if (namePart.indexOf('[]') > -1 && j == nameParts.length - 1)
-				{
-					arrName = namePart.substr(0, namePart.indexOf('['));
-					arrNameFull += arrName;
-
-					if (!currResult[arrName]) currResult[arrName] = [];
-					currResult[arrName].push(value);
-				}
-				else if (namePart.indexOf('[') > -1)
-				{
-					arrName = namePart.substr(0, namePart.indexOf('['));
-					arrIdx = namePart.replace(/(^([a-z_]+)?\[)|(\]$)/gi, '');
-
-					/* Unique array name */
-					arrNameFull += '_' + arrName + '_' + arrIdx;
-
-					/*
-					 * Because arrIdx in field name can be not zero-based and step can be
-					 * other than 1, we can't use them in target array directly.
-					 * Instead we're making a hash where key is arrIdx and value is a reference to
-					 * added array element
-					 */
-
-					if (!arrays[arrNameFull]) arrays[arrNameFull] = {};
-					if (arrName != '' && !currResult[arrName]) currResult[arrName] = [];
-
-					if (j == nameParts.length - 1)
-					{
-						if (arrName == '')
-						{
-							currResult.push(value);
-							arrays[arrNameFull][arrIdx] = currResult[currResult.length - 1];
-						}
-						else
-						{
-							currResult[arrName].push(value);
-							arrays[arrNameFull][arrIdx] = currResult[arrName][currResult[arrName].length - 1];
-						}
-					}
-					else
-					{
-						if (!arrays[arrNameFull][arrIdx])
-						{
-							if ((/^[a-z_]+\[?/i).test(nameParts[j+1])) currResult[arrName].push({});
-							else currResult[arrName].push([]);
-
-							arrays[arrNameFull][arrIdx] = currResult[arrName][currResult[arrName].length - 1];
-						}
+					if(callbackResult && callbackResult.name) {
+						name = callbackResult.name;
+						value = callbackResult.value;
+					} else {
+						value = getNodeValue(node);
 					}
 
-					currResult = arrays[arrNameFull][arrIdx];
-				}
-				else
-				{
-					arrNameFull += namePart;
-
-					if (j < nameParts.length - 1) /* Not the last part of name - means object */
-					{
-						if (!currResult[namePart]) currResult[namePart] = {};
-						currResult = currResult[namePart];
-					}
-					else
-					{
-						currResult[namePart] = value;
+					if(value != null || !skipEmpty) {
+						createDeepProperty(result, name, value, delimiter);
 					}
 				}
 			}
 		}
-
-		return result;
-	}
-
-    function getFormValues(rootNode, nodeCallback, useIdIfEmptyName)
-    {
-        var result = extractNodeValues(rootNode, nodeCallback, useIdIfEmptyName);
-        return result.length > 0 ? result : getSubFormValues(rootNode, nodeCallback, useIdIfEmptyName);
-    }
-
-    function getSubFormValues(rootNode, nodeCallback, useIdIfEmptyName)
-	{
-		var result = [],
-			currentNode = rootNode.firstChild;
 		
-		while (currentNode)
-		{
-			result = result.concat(extractNodeValues(currentNode, nodeCallback, useIdIfEmptyName));
-			currentNode = currentNode.nextSibling;
-		}
-
-		return result;
+		return deepObjectToArray(result);
 	}
 
-    function extractNodeValues(node, nodeCallback, useIdIfEmptyName) {
-        var callbackResult, fieldValue, result, fieldName = getFieldName(node, useIdIfEmptyName);
+	function createDeepProperty(obj, name, value) {
+		var path = name.split('.'),
+			parent = obj, i, l;
 
-        callbackResult = nodeCallback && nodeCallback(node);
+		for(i = 0, l = path.length - 1; i < l; i++) {
+			if(typeof parent[path[i]] === "undefined") parent[path[i]] = {}
+			parent = parent[path[i]];
+		}
 
-        if (callbackResult && callbackResult.name) {
-            result = [callbackResult];
-        }
-        else if (fieldName != '' && node.nodeName.match(/INPUT|TEXTAREA/i)) {
-            fieldValue = getFieldValue(node);
-			result = [ { name: fieldName, value: fieldValue} ];
-        }
-        else if (fieldName != '' && node.nodeName.match(/SELECT/i)) {
-	        fieldValue = getFieldValue(node);
-	        result = [ { name: fieldName.replace(/\[\]$/, ''), value: fieldValue } ];
-        }
-        else {
-            result = getSubFormValues(node, nodeCallback, useIdIfEmptyName);
-        }
+		parent[path[path.length-1]] = value;
+	}
 
-        return result;
-    }
-
-	function getFieldName(node, useIdIfEmptyName)
-	{
+	function getFieldName(node, useIdIfEmptyName) {
 		if (node.name && node.name != '') return node.name;
 		else if (useIdIfEmptyName && node.id && node.id != '') return node.id;
 		else return '';
 	}
 
-
-	function getFieldValue(fieldNode)
-	{
-		if (fieldNode.disabled) return null;
+	function getNodeValue(node) {
+		if (node.disabled) return null;
 		
-		switch (fieldNode.nodeName) {
+		switch (node.nodeName) {
 			case 'INPUT':
 			case 'TEXTAREA':
-				switch (fieldNode.type.toLowerCase()) {
+				switch (node.type.toLowerCase()) {
 					case 'radio':
-			if (fieldNode.checked && fieldNode.value === "false") return false;
+						if (node.checked && node.value === "false") return false;
 					case 'checkbox':
-                        if (fieldNode.checked && fieldNode.value === "true") return true;
-                        if (!fieldNode.checked && fieldNode.value === "true") return false;
-			if (fieldNode.checked) return fieldNode.value;
+                        if (node.checked && node.value === "true") return true;
+                        if (!node.checked && node.value === "true") return false;
+						if (node.checked) return node.value;
 						break;
 
 					case 'button':
@@ -300,13 +171,13 @@
 						break;
 
 					default:
-						return fieldNode.value;
+						return node.value;
 						break;
 				}
 				break;
 
 			case 'SELECT':
-				return getSelectedOptionValue(fieldNode);
+				return getSelectValue(node);
 				break;
 
 			default:
@@ -316,7 +187,7 @@
 		return null;
 	}
 
-	function getSelectedOptionValue(selectNode)
+	function getSelectValue(selectNode)
 	{
 		var multiple = selectNode.multiple,
 			result = [],
